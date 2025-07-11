@@ -822,8 +822,8 @@ def main():
             receiver_card = st.text_input(
                 "💳 Receiver Card Number",
                 value="",
-                help="Enter the receiver's card number (12-19 digits)",
-                placeholder="Enter card number (will be masked for security)"
+                help="Enter card number (will be masked for security)",
+                placeholder="Enter the receiver's card number (12-19 digits)"
             )
             
             # Display current time (read-only)
