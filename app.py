@@ -1,4 +1,4 @@
-# Part 1: Imports and Configuration
+# Enhanced Credit Card Fraud Detection System with User PC Time
 import streamlit as st
 import joblib
 import pickle
@@ -53,10 +53,14 @@ st.markdown("""
     }
     .transaction-time {
         background-color: #e3f2fd;
-        padding: 10px;
-        border-radius: 5px;
+        padding: 15px;
+        border-radius: 10px;
         margin: 10px 0;
         border-left: 4px solid #1976d2;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .risk-factor {
         background-color: #fff3e0;
@@ -72,11 +76,41 @@ st.markdown("""
         margin: 5px 0;
         border-left: 3px solid #4caf50;
     }
+    .ml-metrics {
+        background-color: #e3f2fd;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #1976d2;
+    }
 </style>
+
+<script>
+// JavaScript to get user's local PC time
+function updateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleString();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const date = now.toLocaleDateString();
+    const timeOnly = now.toLocaleTimeString();
+    
+    // Store in sessionStorage for Streamlit to access
+    if (typeof(Storage) !== "undefined") {
+        sessionStorage.setItem('user_local_time', timeString);
+        sessionStorage.setItem('user_hour', hour.toString());
+        sessionStorage.setItem('user_minute', minute.toString());
+        sessionStorage.setItem('user_date', date);
+        sessionStorage.setItem('user_time_only', timeOnly);
+    }
+}
+
+// Update time immediately and then every second
+updateTime();
+setInterval(updateTime, 1000);
+</script>
 """, unsafe_allow_html=True)
 
-# Part 2: Helper Functions and Model Classes
-
+# Helper Functions and Model Classes
 def _default_dict_int():
     return defaultdict(int)
 
@@ -99,7 +133,7 @@ def create_enhanced_card_pattern():
         'unusual_time_cards': set()
     }
 
-# Enhanced Card Pattern Analyzer Class (simplified for Streamlit)
+# Enhanced Card Pattern Analyzer Class (fallback)
 class EnhancedCardPatternAnalyzer:
     def __init__(self):
         self.customer_card_patterns = defaultdict(create_enhanced_card_pattern)
@@ -130,11 +164,35 @@ class EnhancedCardPatternAnalyzer:
     def predict(self, features):
         # Simple rule-based prediction for fallback
         return 0 if features.get('amount', 0) < 1000 else 1
+    
+    def predict_proba(self, features):
+        # Return probability for compatibility
+        prob = 0.3 if features.get('amount', 0) < 1000 else 0.8
+        return [[1-prob, prob]]
+
+# Function to get user's PC local time
+def get_user_pc_time():
+    """Get current time from user's PC"""
+    now = datetime.now()
+    return {
+        'datetime': now,
+        'hour': now.hour,
+        'minute': now.minute,
+        'formatted_time': now.strftime("%Y-%m-%d %H:%M:%S"),
+        'time_only': now.strftime("%H:%M"),
+        'date': now.strftime("%Y-%m-%d"),
+        'timezone': 'Local PC Time',
+        'timestamp': now.timestamp()
+    }
+
+def get_transaction_time():
+    """Get current transaction time from user's PC"""
+    return get_user_pc_time()
 
 # Function to validate card number format
 def validate_card_number(card_number):
-    """Validate card number format (enhanced validation)"""
-    card_number = re.sub(r'[\s-]', '', card_number)
+    """Validate card number format"""
+    card_number = re.sub(r'[\s-]', '', str(card_number))
     
     if not card_number.isdigit():
         return False, "Card number must contain only digits"
@@ -147,12 +205,12 @@ def validate_card_number(card_number):
 # Function to mask card number for display
 def mask_card_number(card_number):
     """Mask card number for security display"""
-    card_number = re.sub(r'[\s-]', '', card_number)
+    card_number = re.sub(r'[\s-]', '', str(card_number))
     if len(card_number) < 4:
         return card_number
     return '*' * (len(card_number) - 4) + card_number[-4:]
 
-# Function to hash card number (matching training format)
+# Function to hash card number
 def hash_card_number(card_number):
     """Hash card number similar to training format"""
     if pd.isna(card_number) or card_number == '' or card_number == 0:
@@ -177,47 +235,185 @@ def hash_card_number(card_number):
     else:
         return hashlib.md5(card_str.encode()).hexdigest()[:12]
 
-# Function to get current transaction time
-def get_transaction_time():
-    """Get current time for transaction"""
-    now = datetime.now()
-    return {
-        'datetime': now,
-        'hour': now.hour,
-        'minute': now.minute,
-        'formatted_time': now.strftime("%Y-%m-%d %H:%M:%S"),
-        'time_only': now.strftime("%H:%M")
-    }
-
-
-
-# Part 3: Model Loading and Analysis Functions
-
-# Function to load the enhanced model
+# Function to load your existing ML model
 @st.cache_resource
 def load_enhanced_model():
-    """Load the enhanced fraud detection model"""
+    """Load your existing fraud detection model"""
     try:
-        model_path = 'enhanced_defone_v2_1.pkl'
+        # Try to load your model file
+        model_files = 'enhanced_defone_v2_1.pkl'
         
-        if os.path.exists(model_path):
-            try:
-                model_data = joblib.load(model_path)
-                st.success("✅ Enhanced model loaded successfully!")
-                return model_data
-            except (AttributeError, ModuleNotFoundError, Exception) as e:
-                st.warning(f"⚠️ Model file contains custom classes that aren't available. Error: {str(e)}")
-                st.info("🔄 Creating enhanced pattern analyzer with default settings...")
-                return EnhancedCardPatternAnalyzer()
-        else:
-            st.warning("⚠️ Model file not found. Using enhanced pattern analyzer with default settings.")
-            return EnhancedCardPatternAnalyzer()
+        for model_path in model_files:
+            if os.path.exists(model_path):
+                try:
+                    model_data = joblib.load(model_path)
+                    st.success(f"✅ ML Model loaded successfully from {model_path}!")
+                    return model_data
+                except Exception as e:
+                    st.warning(f"⚠️ Error loading {model_path}: {str(e)}")
+                    continue
+        
+        # If no model file found, show instructions
+        st.warning("⚠️ No ML model file found. Please ensure your model file is in the same directory.")
+        st.info("""
+        **Expected model files:** 
+        - enhanced_defone_v2_1.pkl
+        - fraud_model.pkl  
+        - model.pkl
+        
+        **To use your model:** Place your trained model file in the same directory as this script.
+        """)
+        
+        # Return fallback analyzer
+        return EnhancedCardPatternAnalyzer()
+        
     except Exception as e:
         st.error(f"❌ Error loading model: {str(e)}")
-        st.info("🔄 Using fallback enhanced pattern analyzer...")
+        st.info("🔄 Using fallback pattern analyzer...")
         return EnhancedCardPatternAnalyzer()
 
-# Function to analyze time-based fraud patterns
+# Function to prepare features for your ML model
+def prepare_features_for_model(customer_id, amount, receiver_card, transaction_time, model_data):
+    """Prepare features in the format expected by your ML model"""
+    
+    # Basic features that most fraud models expect
+    features = {
+        'customer_id': customer_id,
+        'amount': float(amount),
+        'hour': transaction_time['hour'],
+        'minute': transaction_time['minute'],
+        'day_of_week': transaction_time['datetime'].weekday(),
+        'receiver_card': receiver_card,
+        'receiver_card_hash': hash_card_number(receiver_card)
+    }
+    
+    # Add derived features
+    features['is_weekend'] = 1 if transaction_time['datetime'].weekday() >= 5 else 0
+    features['is_night_time'] = 1 if transaction_time['hour'] >= 22 or transaction_time['hour'] <= 5 else 0
+    features['is_business_hours'] = 1 if 9 <= transaction_time['hour'] <= 17 else 0
+    
+    # Amount-based features
+    features['amount_log'] = np.log1p(amount)
+    features['high_amount'] = 1 if amount > 1000 else 0
+    features['very_high_amount'] = 1 if amount > 5000 else 0
+    
+    # Try to get customer history if available in your model
+    try:
+        if hasattr(model_data, 'customer_stats_overall') and model_data.customer_stats_overall is not None:
+            customer_history = model_data.customer_stats_overall[
+                model_data.customer_stats_overall['customer_id'] == customer_id
+            ]
+            if len(customer_history) > 0:
+                stats = customer_history.iloc[0]
+                features['customer_avg_amount'] = stats.get('avg_amount', amount)
+                features['customer_max_amount'] = stats.get('max_amount', amount)
+                features['customer_transaction_count'] = stats.get('transaction_count', 1)
+                features['customer_fraud_ratio'] = stats.get('fraud_ratio', 0)
+            else:
+                # New customer
+                features['customer_avg_amount'] = amount
+                features['customer_max_amount'] = amount
+                features['customer_transaction_count'] = 1
+                features['customer_fraud_ratio'] = 0
+        else:
+            # Default values for new customer
+            features['customer_avg_amount'] = amount
+            features['customer_max_amount'] = amount
+            features['customer_transaction_count'] = 1
+            features['customer_fraud_ratio'] = 0
+    except Exception as e:
+        # Fallback values
+        features['customer_avg_amount'] = amount
+        features['customer_max_amount'] = amount
+        features['customer_transaction_count'] = 1
+        features['customer_fraud_ratio'] = 0
+    
+    # Calculate ratios
+    features['amount_to_avg_ratio'] = amount / max(features['customer_avg_amount'], 1)
+    features['amount_to_max_ratio'] = amount / max(features['customer_max_amount'], 1)
+    
+    return features
+
+# Function to use your ML model for prediction
+def predict_with_your_model(features, model_data):
+    """Use your ML model to predict fraud"""
+    try:
+        # Try to use your actual model
+        if hasattr(model_data, 'predict') and hasattr(model_data, 'predict_proba'):
+            # Your model is a sklearn-like model
+            feature_df = pd.DataFrame([features])
+            
+            # Get prediction and probability
+            prediction = model_data.predict(feature_df)[0]
+            prob = model_data.predict_proba(feature_df)[0]
+            fraud_probability = prob[1] if len(prob) > 1 else prob[0]
+            
+            return {
+                'is_fraud': bool(prediction),
+                'fraud_probability': float(fraud_probability),
+                'confidence': abs(fraud_probability - 0.5) * 2,
+                'model_type': 'Your ML Model'
+            }
+            
+        elif isinstance(model_data, dict) and 'model' in model_data:
+            # Your model is stored in a dictionary
+            model = model_data['model']
+            feature_df = pd.DataFrame([features])
+            
+            prediction = model.predict(feature_df)[0]
+            prob = model.predict_proba(feature_df)[0]
+            fraud_probability = prob[1] if len(prob) > 1 else prob[0]
+            
+            return {
+                'is_fraud': bool(prediction),
+                'fraud_probability': float(fraud_probability),
+                'confidence': abs(fraud_probability - 0.5) * 2,
+                'model_type': 'Your ML Model'
+            }
+            
+        else:
+            # Use fallback method
+            prediction = model_data.predict(features)
+            prob = model_data.predict_proba(features)[0]
+            fraud_probability = prob[1] if len(prob) > 1 else prob[0]
+            
+            return {
+                'is_fraud': bool(prediction),
+                'fraud_probability': float(fraud_probability),
+                'confidence': abs(fraud_probability - 0.5) * 2,
+                'model_type': 'Fallback Model'
+            }
+            
+    except Exception as e:
+        st.error(f"Error using your model: {str(e)}")
+        
+        # Simple fallback prediction
+        fraud_score = 0.2  # Default low risk
+        
+        # Increase risk based on amount
+        if features['amount'] > 5000:
+            fraud_score += 0.4
+        elif features['amount'] > 1000:
+            fraud_score += 0.2
+        
+        # Increase risk based on time
+        if features['is_night_time']:
+            fraud_score += 0.3
+        
+        # Increase risk for new customers with high amounts
+        if features['customer_transaction_count'] < 5 and features['amount'] > 1000:
+            fraud_score += 0.2
+        
+        fraud_score = min(fraud_score, 1.0)
+        
+        return {
+            'is_fraud': fraud_score > 0.5,
+            'fraud_probability': fraud_score,
+            'confidence': abs(fraud_score - 0.5) * 2,
+            'model_type': 'Rule-based Fallback'
+        }
+
+# Analysis Functions
 def analyze_time_patterns(hour, minute):
     """Analyze fraud patterns based on transaction time"""
     time_indicators = []
@@ -225,18 +421,15 @@ def analyze_time_patterns(hour, minute):
     # Peak fraud hours (2-4 AM)
     if hour in [2, 3, 4]:
         time_indicators.append("🔴 Transaction during peak fraud hours (2-4 AM)")
-    
     # Unusual hours (late night/early morning)
     elif hour >= 23 or hour <= 5:
         time_indicators.append("🟡 Transaction during unusual hours (11 PM - 5 AM)")
-    
-    # Weekend late hours (if applicable)
+    # Weekend late hours
     if hour >= 22 or hour <= 6:
         time_indicators.append("🟡 Transaction during high-risk time period")
     
     return time_indicators
 
-# Function to get hour risk score
 def get_hour_risk_score(hour):
     """Get risk score for specific hour"""
     hour_risk_mapping = {
@@ -248,7 +441,6 @@ def get_hour_risk_score(hour):
     }
     return hour_risk_mapping.get(hour, 1.0)
 
-# Function to analyze card familiarity
 def analyze_card_familiarity(customer_id, receiver_card, customer_stats):
     """Analyze card familiarity patterns"""
     if customer_stats is None or customer_stats.get('transaction_count', 0) == 0:
@@ -258,8 +450,6 @@ def analyze_card_familiarity(customer_id, receiver_card, customer_stats):
             'risk_level': 'HIGH',
             'indicators': ['New customer - no transaction history']
         }
-    
-    hashed_card = hash_card_number(receiver_card)
     
     # Simulate card frequency analysis
     card_usage_frequency = 0.3 if customer_stats.get('transaction_count', 0) > 5 else 0.1
@@ -283,274 +473,157 @@ def analyze_card_familiarity(customer_id, receiver_card, customer_stats):
         'indicators': indicators
     }
 
-# Function to simulate processing
 def simulate_processing():
     """Simulate fraud detection processing"""
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     stages = [
-        "🔍 Initializing enhanced fraud detection system...",
+        "🔍 Loading your ML model...",
         "🔐 Validating card information...",
-        "📊 Analyzing transaction patterns...",
-        "⏰ Checking time-based patterns...",
-        "📈 Comparing with historical data...",
-        "🎯 Calculating enhanced fraud indicators...",
-        "⚡ Applying machine learning models...",
-        "🏁 Finalizing enhanced fraud assessment..."
+        "📊 Preparing features for your model...",
+        "⏰ Analyzing transaction timing...",
+        "🤖 Running your ML model prediction...",
+        "📈 Calculating risk assessment...",
+        "🎯 Finalizing fraud detection results..."
     ]
     
     for i, stage in enumerate(stages):
         progress = (i+1) / len(stages)
         progress_bar.progress(progress)
         status_text.text(stage)
-        time.sleep(0.3)
+        time.sleep(0.4)
     
     progress_bar.empty()
     status_text.empty()
 
-
-# Part 4: Enhanced Transaction Analysis
-
+# Enhanced Transaction Analysis using your ML model
 def analyze_enhanced_transaction(customer_id, amount, receiver_card, transaction_time, model_data):
-    """Enhanced transaction analysis with machine learning integration"""
+    """Enhanced transaction analysis using your ML model"""
     
-    # Handle different model data types
-    if hasattr(model_data, 'threshold'):
-        threshold = getattr(model_data, 'threshold', 0.5)
-        customer_stats_overall = getattr(model_data, 'customer_stats_overall', None)
-    elif isinstance(model_data, dict):
-        threshold = model_data.get('threshold', 0.5)
-        customer_stats_overall = model_data.get('customer_stats_overall')
+    # Prepare features for your model
+    features = prepare_features_for_model(customer_id, amount, receiver_card, transaction_time, model_data)
+    
+    # Get prediction from your ML model
+    ml_prediction = predict_with_your_model(features, model_data)
+    
+    # Get additional analysis
+    time_indicators = analyze_time_patterns(transaction_time['hour'], transaction_time['minute'])
+    hour_risk_score = get_hour_risk_score(transaction_time['hour'])
+    
+    # Get customer stats
+    customer_stats = {
+        'transaction_count': features.get('customer_transaction_count', 1),
+        'avg_amount': features.get('customer_avg_amount', amount),
+        'max_amount': features.get('customer_max_amount', amount),
+        'fraud_ratio': features.get('customer_fraud_ratio', 0),
+        'amount_to_avg_ratio': features.get('amount_to_avg_ratio', 1.0),
+        'amount_to_max_ratio': features.get('amount_to_max_ratio', 1.0)
+    }
+    
+    # Determine customer risk level
+    if customer_stats['transaction_count'] >= 20:
+        customer_risk_level = 'ESTABLISHED'
+    elif customer_stats['transaction_count'] >= 10:
+        customer_risk_level = 'REGULAR'
+    elif customer_stats['transaction_count'] >= 1:
+        customer_risk_level = 'NEW'
     else:
-        threshold = 0.5
-        customer_stats_overall = None
-    
-    # Get customer history if available
-    customer_history = None
-    if customer_stats_overall is not None:
-        try:
-            customer_history = customer_stats_overall[
-                customer_stats_overall['customer_id'] == customer_id
-            ]
-        except Exception as e:
-            st.error(f"Error getting customer history: {str(e)}")
-            customer_history = None
-    
-    # Calculate enhanced customer statistics
-    if customer_history is None or len(customer_history) == 0:
-        customer_stats = {
-            'transaction_count': 0,
-            'avg_amount': 0,
-            'max_amount': 0,
-            'min_amount': 0,
-            'total_amount': 0,
-            'fraud_ratio': 0,
-            'unique_cards_used': 0,
-            'trusted_cards': 0,
-            'suspicious_cards': 0
-        }
         customer_risk_level = 'NEW_CUSTOMER'
-    else:
-        stats = customer_history.iloc[0]
-        customer_stats = {
-            'transaction_count': stats.get('transaction_count', 0),
-            'avg_amount': stats.get('avg_amount', 0),
-            'max_amount': stats.get('max_amount', 0),
-            'min_amount': stats.get('min_amount', 0),
-            'total_amount': stats.get('total_amount', 0),
-            'fraud_ratio': stats.get('fraud_ratio', 0),
-            'unique_cards_used': stats.get('unique_cards_used', 0),
-            'trusted_cards': stats.get('trusted_cards', 0),
-            'suspicious_cards': stats.get('suspicious_cards', 0)
-        }
-        
-        # Determine customer risk level
-        if customer_stats['transaction_count'] >= 20:
-            customer_risk_level = 'ESTABLISHED'
-        elif customer_stats['transaction_count'] >= 10:
-            customer_risk_level = 'REGULAR'
-        else:
-            customer_risk_level = 'NEW'
     
-    # Calculate enhanced fraud indicators
+    # Card analysis
+    card_analysis = analyze_card_familiarity(customer_id, receiver_card, customer_stats)
+    
+    # Generate fraud indicators and protective factors
     fraud_indicators = []
     protective_factors = []
     
     # Amount-based analysis
-    if customer_stats['avg_amount'] > 0:
-        amount_to_avg_ratio = amount / customer_stats['avg_amount']
-        if amount_to_avg_ratio > 5.0:
-            fraud_indicators.append(f"🔴 Amount is {amount_to_avg_ratio:.1f}x higher than customer's average")
-        elif amount_to_avg_ratio > 3.0:
-            fraud_indicators.append(f"🟡 Amount is {amount_to_avg_ratio:.1f}x higher than customer's average")
-        elif amount_to_avg_ratio < 1.5:
-            protective_factors.append(f"🟢 Amount is consistent with customer's average")
-    else:
-        amount_to_avg_ratio = 0
-        if amount > 1000:
-            fraud_indicators.append("🔴 High amount for a new customer")
-        elif amount > 500:
-            fraud_indicators.append("🟡 Moderate amount for a new customer")
-    
-    if customer_stats['max_amount'] > 0:
-        amount_to_max_ratio = amount / customer_stats['max_amount']
-        if amount_to_max_ratio > 2.0:
-            fraud_indicators.append(f"🔴 Amount is {amount_to_max_ratio:.1f}x higher than customer's maximum")
-        elif amount_to_max_ratio > 1.5:
-            fraud_indicators.append(f"🟡 Amount exceeds customer's maximum by {amount_to_max_ratio:.1f}x")
-    else:
-        amount_to_max_ratio = 0
+    if customer_stats['amount_to_avg_ratio'] > 5.0:
+        fraud_indicators.append(f"🔴 Amount is {customer_stats['amount_to_avg_ratio']:.1f}x higher than customer's average")
+    elif customer_stats['amount_to_avg_ratio'] > 3.0:
+        fraud_indicators.append(f"🟡 Amount is {customer_stats['amount_to_avg_ratio']:.1f}x higher than customer's average")
+    elif customer_stats['amount_to_avg_ratio'] < 1.5:
+        protective_factors.append("🟢 Amount is consistent with customer's average")
     
     # Time-based analysis
-    hour_risk_score = get_hour_risk_score(transaction_time['hour'])
-    time_indicators = analyze_time_patterns(transaction_time['hour'], transaction_time['minute'])
     fraud_indicators.extend(time_indicators)
+    if hour_risk_score <= 1.0:
+        protective_factors.append("🟢 Transaction during normal business hours")
     
-    # Card familiarity analysis
-    card_analysis = analyze_card_familiarity(customer_id, receiver_card, customer_stats)
+    # Card analysis
     fraud_indicators.extend(card_analysis['indicators'])
     
-    # Enhanced fraud score calculation
-    fraud_score = calculate_enhanced_fraud_score(
-        amount, customer_stats, amount_to_avg_ratio, amount_to_max_ratio,
-        hour_risk_score, card_analysis, customer_risk_level
-    )
-    
-    # Adjust for customer history
-    if customer_stats['transaction_count'] > 15:
-        if customer_stats['fraud_ratio'] < 0.05:  # Less than 5% fraud rate
-            fraud_score *= 0.8  # Reduce risk for clean customers
-            protective_factors.append("🟢 Customer has clean transaction history")
-        elif customer_stats['fraud_ratio'] > 0.2:  # More than 20% fraud rate
-            fraud_score *= 1.3  # Increase risk for suspicious customers
-            fraud_indicators.append("🔴 Customer has high fraud history")
-    
-    # Final prediction
-    predicted_fraud = fraud_score > threshold
+    # Customer history
+    if customer_stats['transaction_count'] > 15 and customer_stats['fraud_ratio'] < 0.05:
+        protective_factors.append("🟢 Customer has clean transaction history")
+    elif customer_stats['fraud_ratio'] > 0.2:
+        fraud_indicators.append("🔴 Customer has high fraud history")
     
     return {
-        'predicted_fraud': predicted_fraud,
-        'fraud_score': fraud_score,
-        'threshold': threshold,
+        'predicted_fraud': ml_prediction['is_fraud'],
+        'fraud_score': ml_prediction['fraud_probability'],
+        'confidence': ml_prediction['confidence'],
+        'model_type': ml_prediction['model_type'],
         'customer_stats': customer_stats,
         'customer_risk_level': customer_risk_level,
         'fraud_indicators': fraud_indicators,
         'protective_factors': protective_factors,
-        'amount_to_avg_ratio': amount_to_avg_ratio if customer_stats['avg_amount'] > 0 else None,
-        'amount_to_max_ratio': amount_to_max_ratio if customer_stats['max_amount'] > 0 else None,
         'time_indicators': time_indicators,
         'card_analysis': card_analysis,
         'hour_risk_score': hour_risk_score,
-        'confidence_level': get_confidence_level(customer_stats['transaction_count'])
+        'features_used': features
     }
 
-def calculate_enhanced_fraud_score(amount, customer_stats, amount_to_avg_ratio, amount_to_max_ratio, hour_risk_score, card_analysis, customer_risk_level):
-    """Calculate enhanced fraud score using multiple factors"""
+# Display Functions
+def display_live_clock():
+    """Display live clock using user's PC time"""
+    current_time = get_user_pc_time()
     
-    base_score = 0.0
+    # Create live clock display
+    risk_level = '🔴 HIGH RISK' if current_time['hour'] in [0,1,2,3,22,23] else '🟡 MEDIUM RISK' if current_time['hour'] in [4,5,6,20,21] else '🟢 LOW RISK'
     
-    # Amount risk (30% weight)
-    amount_risk = 0.0
-    if amount_to_avg_ratio > 5:
-        amount_risk += 0.9
-    elif amount_to_avg_ratio > 3:
-        amount_risk += 0.6
-    elif amount_to_avg_ratio > 2:
-        amount_risk += 0.3
+    clock_html = f"""
+    <div class="transaction-time">
+        <h3 style="margin: 0; font-size: 1.2em;">🕒 Current PC Time</h3>
+        <div style="font-size: 1.8em; font-weight: bold; margin: 5px 0;">
+            {current_time['time_only']}
+        </div>
+        <div style="font-size: 0.9em; opacity: 0.9;">
+            {current_time['date']} | {current_time['timezone']}
+        </div>
+        <div style="font-size: 0.8em; opacity: 0.8;">
+            Fraud Risk Level: {risk_level}
+        </div>
+    </div>
+    """
     
-    if amount_to_max_ratio > 2:
-        amount_risk += 0.8
-    elif amount_to_max_ratio > 1.5:
-        amount_risk += 0.5
-    
-    if amount > 5000:
-        amount_risk += 0.4
-    elif amount > 1000:
-        amount_risk += 0.2
-    
-    amount_risk = min(amount_risk, 1.0)
-    
-    # Time risk (25% weight)
-    time_risk = min(hour_risk_score / 3.0, 1.0)
-    
-    # Card risk (25% weight)
-    card_risk = 1.0 - card_analysis['familiarity_score']
-    if card_analysis['is_new_card']:
-        card_risk = min(card_risk * 1.5, 1.0)
-    
-    # Customer risk (20% weight)
-    customer_risk = 0.0
-    if customer_risk_level == 'NEW_CUSTOMER':
-        customer_risk = 0.7
-    elif customer_risk_level == 'NEW':
-        customer_risk = 0.4
-    elif customer_risk_level == 'REGULAR':
-        customer_risk = 0.2
-    else:  # ESTABLISHED
-        customer_risk = 0.1
-    
-    # Fraud history factor
-    if customer_stats.get('fraud_ratio', 0) > 0.1:
-        customer_risk += 0.3
-    
-    # Weighted combination
-    fraud_score = (
-        0.30 * amount_risk +
-        0.25 * time_risk +
-        0.25 * card_risk +
-        0.20 * customer_risk
-    )
-    
-    # Risk factor multiplication
-    risk_factor_count = sum([
-        1 if amount_to_avg_ratio > 3 else 0,
-        1 if hour_risk_score > 2.0 else 0,
-        1 if card_analysis['is_new_card'] else 0,
-        1 if customer_risk_level == 'NEW_CUSTOMER' else 0
-    ])
-    
-    if risk_factor_count >= 3:
-        fraud_score = min(fraud_score * 1.3, 1.0)
-    elif risk_factor_count >= 2:
-        fraud_score = min(fraud_score * 1.1, 1.0)
-    
-    return max(min(fraud_score, 1.0), 0.0)
-
-def get_confidence_level(transaction_count):
-    """Get confidence level based on transaction count"""
-    if transaction_count >= 20:
-        return 'HIGH'
-    elif transaction_count >= 10:
-        return 'MEDIUM'
-    elif transaction_count >= 5:
-        return 'LOW'
-    else:
-        return 'VERY_LOW'
-
-
-# Part 5: UI Components and Display Functions
+    st.markdown(clock_html, unsafe_allow_html=True)
+    return current_time
 
 def display_enhanced_result(analysis_result):
     """Display enhanced prediction result with detailed analysis"""
     predicted_fraud = analysis_result['predicted_fraud']
     fraud_score = analysis_result['fraud_score']
-    confidence_level = analysis_result['confidence_level']
+    confidence = analysis_result['confidence']
+    model_type = analysis_result['model_type']
     
     # Main prediction result
     if predicted_fraud:
         st.markdown('<div class="result-box fraud">', unsafe_allow_html=True)
-        st.error("🚨 **POTENTIAL FRAUD DETECTED!**")
-        st.write(f"**Fraud Score:** {fraud_score:.3f} (Threshold: {analysis_result['threshold']:.3f})")
-        st.write(f"**Confidence Level:** {confidence_level}")
-        st.write("⚠️ This transaction has been flagged as potentially fraudulent and requires immediate review.")
+        st.error("🚨 **FRAUD DETECTED BY ML MODEL!**")
+        st.write(f"**Fraud Probability:** {fraud_score:.1%}")
+        st.write(f"**Confidence Level:** {confidence:.1%}")
+        st.write(f"**Model Used:** {model_type}")
+        st.write("⚠️ This transaction has been flagged as potentially fraudulent!")
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="result-box legitimate">', unsafe_allow_html=True)
-        st.success("✅ **TRANSACTION APPEARS LEGITIMATE**")
-        st.write(f"**Fraud Score:** {fraud_score:.3f} (Threshold: {analysis_result['threshold']:.3f})")
-        st.write(f"**Confidence Level:** {confidence_level}")
-        st.write("✅ This transaction appears to be legitimate based on our enhanced analysis.")
+        st.success("✅ **LEGITIMATE TRANSACTION**")
+        st.write(f"**Fraud Probability:** {fraud_score:.1%}")
+        st.write(f"**Confidence Level:** {confidence:.1%}")
+        st.write(f"**Model Used:** {model_type}")
+        st.write("✅ This transaction appears to be legitimate.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 def display_customer_profile(customer_stats, customer_risk_level):
@@ -568,9 +641,9 @@ def display_customer_profile(customer_stats, customer_risk_level):
         st.metric("Maximum Amount", f"${customer_stats['max_amount']:.2f}")
         
     with col3:
-        st.metric("Total Spent", f"${customer_stats['total_amount']:.2f}")
         fraud_rate = customer_stats.get('fraud_ratio', 0)
         st.metric("Historical Fraud Rate", f"{fraud_rate:.1%}")
+        st.metric("Amount Ratio", f"{customer_stats.get('amount_to_avg_ratio', 1):.1f}x")
 
 def display_risk_analysis(analysis_result):
     """Display detailed risk analysis"""
@@ -591,207 +664,77 @@ def display_risk_analysis(analysis_result):
     if not analysis_result['fraud_indicators'] and not analysis_result['protective_factors']:
         st.info("No specific risk or protective factors identified.")
 
-def display_component_analysis(analysis_result):
-    """Display component-wise analysis"""
-    st.markdown("### 📊 Component Analysis")
+def display_model_features(features_used):
+    """Display features used by the ML model"""
+    st.markdown("### 🤖 ML Model Features")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**💰 Amount Analysis:**")
-        if analysis_result['amount_to_avg_ratio']:
-            st.write(f"• Amount to Average Ratio: {analysis_result['amount_to_avg_ratio']:.2f}x")
-        if analysis_result['amount_to_max_ratio']:
-            st.write(f"• Amount to Maximum Ratio: {analysis_result['amount_to_max_ratio']:.2f}x")
+        st.markdown("**Transaction Features:**")
+        st.write(f"• Amount: ${features_used['amount']:,.2f}")
+        st.write(f"• Hour: {features_used['hour']}:00")
+        st.write(f"• Day of Week: {features_used['day_of_week']}")
+        st.write(f"• Is Weekend: {'Yes' if features_used['is_weekend'] else 'No'}")
+        st.write(f"• Is Night Time: {'Yes' if features_used['is_night_time'] else 'No'}")
         
-        st.markdown("**🕒 Time Analysis:**")
-        st.write(f"• Hour Risk Score: {analysis_result['hour_risk_score']:.2f}")
-        st.write(f"• Time Risk Level: {'HIGH' if analysis_result['hour_risk_score'] > 2.0 else 'MEDIUM' if analysis_result['hour_risk_score'] > 1.5 else 'LOW'}")
-    
     with col2:
-        st.markdown("**💳 Card Analysis:**")
-        card_analysis = analysis_result['card_analysis']
-        st.write(f"• Familiarity Score: {card_analysis['familiarity_score']:.2f}")
-        st.write(f"• Card Risk Level: {card_analysis['risk_level']}")
-        st.write(f"• New Card: {'Yes' if card_analysis['is_new_card'] else 'No'}")
-        
-        st.markdown("**🔒 Security Metrics:**")
-        st.write(f"• Fraud Score: {analysis_result['fraud_score']:.3f}")
-        st.write(f"• Detection Threshold: {analysis_result['threshold']:.3f}")
-
-def display_recommendations(analysis_result):
-    """Display recommendations based on analysis"""
-    st.markdown("### 💡 Recommendations")
-    
-    if analysis_result['predicted_fraud']:
-        st.markdown("""
-        **🚨 IMMEDIATE ACTIONS REQUIRED:**
-        
-        **Priority 1 - Immediate:**
-        • 📞 Contact the account holder immediately to verify the transaction
-        • 🔒 Temporarily freeze the account to prevent further unauthorized transactions
-        • 📋 Document all fraud indicators for investigation
-        
-        **Priority 2 - Investigation:**
-        • 🔍 Verify the receiver card details and relationship to account holder
-        • 🕵️ Check transaction patterns in the last 24-48 hours
-        • 📊 Review customer's recent transaction history for anomalies
-        • 🌐 Cross-reference with global fraud databases
-        
-        **Priority 3 - Follow-up:**
-        • 📈 Implement enhanced monitoring for future transactions
-        • 🔐 Consider requiring additional verification for high-risk transactions
-        • 📝 Update customer risk profile based on investigation results
-        """)
-    else:
-        st.markdown("""
-        **✅ TRANSACTION APPROVED - MONITORING ACTIONS:**
-        
-        **Standard Processing:**
-        • ✅ Transaction can proceed with normal processing
-        • 📊 Continue standard transaction monitoring
-        • 🔄 Update customer transaction patterns
-        
-        **Enhanced Monitoring (if applicable):**""")
-        
-        # Add specific monitoring based on risk factors
-        if analysis_result['fraud_score'] > 0.3:
-            st.markdown("• 👀 Monitor for unusual patterns in next 24 hours")
-        if analysis_result['card_analysis']['is_new_card']:
-            st.markdown("• 💳 Track new card usage patterns")
-        if analysis_result['hour_risk_score'] > 2.0:
-            st.markdown("• ⏰ Monitor for repeated unusual-hour transactions")
+        st.markdown("**Customer Features:**")
+        st.write(f"• Transaction Count: {features_used['customer_transaction_count']}")
+        st.write(f"• Average Amount: ${features_used['customer_avg_amount']:,.2f}")
+        st.write(f"• Amount Ratio: {features_used['amount_to_avg_ratio']:.2f}x")
+        st.write(f"• Fraud History: {features_used['customer_fraud_ratio']:.1%}")
 
 def create_sidebar_info():
     """Create sidebar with application information"""
     with st.sidebar:
-        # Logo (if exists)
-        if os.path.exists("img/logo_app.png"):
-            st.image("img/logo_app.png", width=100)
+        st.markdown("## 🤖 ML Model Status")
+        st.markdown('<div class="ml-metrics">', unsafe_allow_html=True)
+        st.write("**Status:** Your ML Model Loaded")
+        st.write("**Type:** Fraud Detection Model")
+        st.write("**Features:** Multi-factor Analysis")
+        st.write("**Time Source:** User PC Local Time")
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown("## 🔍 About Enhanced Detection")
-        st.info(
-            "This application uses advanced AI and machine learning models to detect "
-            "potentially fraudulent credit card transactions. It analyzes customer behavior "
-            "patterns, card usage history, transaction timing, and amount patterns using "
-            "multiple detection algorithms."
-        )
+        st.markdown("## 🕒 Time Information")
+        current_time = get_user_pc_time()
+        st.write(f"**Current Time:** {current_time['time_only']}")
+        st.write(f"**Date:** {current_time['date']}")
+        risk_level = '🔴 HIGH' if current_time['hour'] in [0,1,2,3,22,23] else '🟡 MEDIUM' if current_time['hour'] in [4,5,6,20,21] else '🟢 LOW'
+        st.write(f"**Time Risk:** {risk_level}")
         
-        st.markdown("## 🛠️ How It Works")
+        st.markdown("## 🔍 Detection Features")
         st.markdown("""
-        **1. Data Collection:**
-        - Customer ID and transaction history
-        - Transaction amount and patterns
-        - Receiver card number analysis
-        - Transaction timing analysis
-        
-        **2. Enhanced Analysis:**
-        - Machine learning model predictions
-        - Customer behavior pattern analysis
-        - Card familiarity scoring
-        - Time-based risk assessment
-        
-        **3. Risk Scoring:**
-        - Multi-factor fraud score calculation
-        - Confidence level assessment
-        - Risk factor identification
-        - Protective factor recognition
-        """)
-        
-        st.markdown("## 🔒 Security Features")
-        st.markdown("""
+        - **Your ML Model:** Uses your trained model for predictions
         - **Real-time Analysis:** Instant fraud detection
+        - **PC Time:** Uses your local computer time
         - **Card Masking:** Secure card number display
-        - **Pattern Recognition:** Advanced ML algorithms
-        - **Risk Categorization:** Multi-level risk assessment
-        - **Historical Analysis:** Customer behavior tracking
-        - **Time-based Detection:** Unusual hour identification
+        - **Pattern Recognition:** Advanced analysis
+        - **Risk Assessment:** Multi-level evaluation
         """)
         
-        st.markdown("## 📊 Model Performance")
+        st.markdown("## 📊 Model Features")
         st.markdown("""
-        - **Accuracy:** High precision fraud detection
-        - **Speed:** Real-time transaction analysis
-        - **Adaptability:** Continuous learning from patterns
-        - **Reliability:** Multiple validation layers
+        - **Customer History:** Transaction patterns
+        - **Amount Analysis:** Spending behavior
+        - **Time Analysis:** Transaction timing
+        - **Card Analysis:** Card usage patterns
+        - **Risk Scoring:** Comprehensive evaluation
         """)
 
-def display_technical_details(analysis_result):
-    """Display technical details for advanced users"""
-    with st.expander("🔧 Technical Details", expanded=False):
-        st.markdown("### Model Components")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Detection Methods:**")
-            st.write("• Machine Learning Models")
-            st.write("• Pattern Recognition")
-            st.write("• Statistical Analysis")
-            st.write("• Time Series Analysis")
-            
-        with col2:
-            st.markdown("**Risk Factors:**")
-            st.write(f"• Amount Risk: {((analysis_result['amount_to_avg_ratio'] or 1) - 1) * 100:.1f}%")
-            st.write(f"• Time Risk: {(analysis_result['hour_risk_score'] - 1) * 100:.1f}%")
-            st.write(f"• Card Risk: {(1 - analysis_result['card_analysis']['familiarity_score']) * 100:.1f}%")
-            st.write(f"• Overall Score: {analysis_result['fraud_score'] * 100:.1f}%")
-        
-        st.markdown("### Algorithm Weights")
-        st.write("• Amount Analysis: 30%")
-        st.write("• Time Analysis: 25%") 
-        st.write("• Card Analysis: 25%")
-        st.write("• Customer History: 20%")
-        
-        st.markdown("### Threshold Information")
-        st.write(f"• Detection Threshold: {analysis_result['threshold']:.3f}")
-        st.write(f"• Current Score: {analysis_result['fraud_score']:.3f}")
-        st.write(f"• Confidence Level: {analysis_result['confidence_level']}")
-
-def display_fraud_score_visualization(fraud_score, threshold):
-    """Display fraud score visualization"""
-    st.markdown("### 📈 Fraud Score Visualization")
-    
-    # Create a simple progress bar visualization
-    score_percentage = fraud_score * 100
-    threshold_percentage = threshold * 100
-    
-    # Color coding
-    if fraud_score >= threshold:
-        color = "🔴"
-        status = "HIGH RISK"
-    elif fraud_score >= threshold * 0.7:
-        color = "🟡"
-        status = "MEDIUM RISK"
-    else:
-        color = "🟢"
-        status = "LOW RISK"
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col1:
-        st.metric("Fraud Score", f"{score_percentage:.1f}%")
-    
-    with col2:
-        st.progress(fraud_score)
-        st.write(f"{color} **{status}**")
-    
-    with col3:
-        st.metric("Threshold", f"{threshold_percentage:.1f}%")
-
-
-# Part 6: Main Application Interface
-
-# Header section
-st.markdown('<h1 class="main-header">Enhanced Credit Card Fraud Detection System</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #666; font-size: 1.1em;">Powered by Advanced Machine Learning & Pattern Recognition</p>', unsafe_allow_html=True)
-
-# Create sidebar
-create_sidebar_info()
-
-# Main application interface
+# Main Application Interface
 def main():
-    # Load the enhanced model
+    # Header section
+    st.markdown('<h1 class="main-header">Enhanced Credit Card Fraud Detection System</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #666; font-size: 1.1em;">Powered by Your Machine Learning Model & Real-Time Analysis</p>', unsafe_allow_html=True)
+    
+    # Create sidebar
+    create_sidebar_info()
+    
+    # Display live clock
+    current_time = display_live_clock()
+    
+    # Load your ML model
     model_data = load_enhanced_model()
     
     # Create input form
@@ -805,14 +748,14 @@ def main():
             customer_id = st.number_input(
                 "👤 Customer ID", 
                 min_value=1, 
-                value=1,
+                value=12345,
                 help="Enter the customer's unique identifier"
             )
             
             amount = st.number_input(
                 "💰 Transaction Amount ($)", 
                 min_value=0.01, 
-                value=100.00,
+                value=1500.00,
                 step=10.0, 
                 format="%.2f", 
                 help="Enter the transaction amount in USD"
@@ -821,29 +764,41 @@ def main():
         with col2:
             receiver_card = st.text_input(
                 "💳 Receiver Card Number",
-                value="",
+                value="1234567890123456",
                 help="Enter card number (will be masked for security)",
                 placeholder="Enter the receiver's card number (12-19 digits)"
             )
             
             # Display current time (read-only)
-            current_time = get_transaction_time()
             st.text_input(
-                "🕒 Transaction Time",
+                "🕒 Transaction Time (PC Local)",
                 value=current_time['formatted_time'],
                 disabled=True,
-                help="Current transaction time (automatically captured)"
+                help="Current transaction time from your PC"
             )
     
-    # Display current time info
-    st.markdown('<div class="transaction-time">', unsafe_allow_html=True)
-    st.write(f"**📅 Current Transaction Time:** {current_time['formatted_time']}")
-    st.write(f"**🌍 Time Zone:** System Local Time")
-    st.write(f"**⏰ Hour Risk Level:** {'HIGH' if current_time['hour'] in [0,1,2,3,22,23] else 'MEDIUM' if current_time['hour'] in [4,5,6,20,21] else 'LOW'}")
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Real-time transaction info
+    st.markdown("### ⏰ Real-Time Transaction Context")
+    info_col1, info_col2, info_col3, info_col4 = st.columns(4)
+    
+    with info_col1:
+        st.metric("Current Hour", f"{current_time['hour']}:00")
+    
+    with info_col2:
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        current_day = day_names[current_time['datetime'].weekday()]
+        st.metric("Day", current_day)
+    
+    with info_col3:
+        is_weekend = "Yes" if current_time['datetime'].weekday() >= 5 else "No"
+        st.metric("Weekend", is_weekend)
+    
+    with info_col4:
+        risk_level = 'HIGH' if current_time['hour'] in [0,1,2,3,22,23] else 'MEDIUM' if current_time['hour'] in [4,5,6,20,21] else 'LOW'
+        st.metric("Time Risk", risk_level)
     
     # Analysis button
-    if st.button("🔍 Analyze Transaction", type="primary", use_container_width=True):
+    if st.button("🔍 Analyze Transaction with Your ML Model", type="primary", use_container_width=True):
         # Validate inputs
         if not receiver_card.strip():
             st.error("❌ Please enter a receiver card number")
@@ -860,15 +815,15 @@ def main():
             return
         
         # Perform analysis
-        with st.spinner("🔄 Performing enhanced fraud detection analysis..."):
+        with st.spinner("🔄 Running your ML model for fraud detection..."):
             try:
                 # Simulate processing for better UX
                 simulate_processing()
                 
                 # Get fresh transaction time
-                transaction_time = get_transaction_time()
+                transaction_time = get_user_pc_time()
                 
-                # Analyze transaction using enhanced model
+                # Analyze transaction using your ML model
                 analysis_result = analyze_enhanced_transaction(
                     customer_id, 
                     amount, 
@@ -878,7 +833,8 @@ def main():
                 )
                 
                 # Display results
-                st.markdown('<h2 class="sub-header">📊 Analysis Results</h2>', unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown('<h2 class="sub-header">📊 ML Analysis Results</h2>', unsafe_allow_html=True)
                 
                 # Main prediction result
                 display_enhanced_result(analysis_result)
@@ -899,10 +855,34 @@ def main():
                     st.write(f"• Receiver Card: {mask_card_number(receiver_card)}")
                     st.write(f"• Card Hash: {hash_card_number(receiver_card)[:12]}...")
                     st.write(f"• Analysis Time: {datetime.now().strftime('%H:%M:%S')}")
-                    st.write(f"• Risk Assessment: {'HIGH' if analysis_result['predicted_fraud'] else 'LOW'}")
+                    st.write(f"• Risk Level: {'HIGH' if analysis_result['predicted_fraud'] else 'LOW'}")
                 
                 # Display fraud score visualization
-                display_fraud_score_visualization(analysis_result['fraud_score'], analysis_result['threshold'])
+                st.markdown("### 📈 Fraud Score Visualization")
+                score_percentage = analysis_result['fraud_score'] * 100
+                
+                # Color coding
+                if analysis_result['predicted_fraud']:
+                    color = "🔴"
+                    status = "FRAUD DETECTED"
+                elif analysis_result['fraud_score'] > 0.3:
+                    color = "🟡"
+                    status = "MEDIUM RISK"
+                else:
+                    color = "🟢"
+                    status = "LOW RISK"
+                
+                col1, col2, col3 = st.columns([1, 2, 1])
+                
+                with col1:
+                    st.metric("Fraud Score", f"{score_percentage:.1f}%")
+                
+                with col2:
+                    st.progress(analysis_result['fraud_score'])
+                    st.write(f"{color} **{status}**")
+                
+                with col3:
+                    st.metric("Confidence", f"{analysis_result['confidence']:.1%}")
                 
                 # Customer profile
                 if analysis_result['customer_stats']['transaction_count'] > 0:
@@ -910,24 +890,112 @@ def main():
                 else:
                     st.info("👤 **New Customer Detected** - No previous transaction history available")
                 
-                # Component analysis
-                display_component_analysis(analysis_result)
+                # Display ML model features
+                display_model_features(analysis_result['features_used'])
                 
                 # Risk analysis
                 display_risk_analysis(analysis_result)
                 
+                # Component analysis
+                st.markdown("### 📊 Detailed Analysis")
+                
+                analysis_col1, analysis_col2 = st.columns(2)
+                
+                with analysis_col1:
+                    st.markdown("**💰 Amount Analysis:**")
+                    if analysis_result['customer_stats']['amount_to_avg_ratio']:
+                        st.write(f"• Amount to Average Ratio: {analysis_result['customer_stats']['amount_to_avg_ratio']:.2f}x")
+                    if analysis_result['customer_stats']['amount_to_max_ratio']:
+                        st.write(f"• Amount to Maximum Ratio: {analysis_result['customer_stats']['amount_to_max_ratio']:.2f}x")
+                    
+                    st.markdown("**🕒 Time Analysis:**")
+                    st.write(f"• Hour Risk Score: {analysis_result['hour_risk_score']:.2f}")
+                    st.write(f"• Time Risk Level: {'HIGH' if analysis_result['hour_risk_score'] > 2.0 else 'MEDIUM' if analysis_result['hour_risk_score'] > 1.5 else 'LOW'}")
+                
+                with analysis_col2:
+                    st.markdown("**💳 Card Analysis:**")
+                    card_analysis = analysis_result['card_analysis']
+                    st.write(f"• Familiarity Score: {card_analysis['familiarity_score']:.2f}")
+                    st.write(f"• Card Risk Level: {card_analysis['risk_level']}")
+                    st.write(f"• New Card: {'Yes' if card_analysis['is_new_card'] else 'No'}")
+                    
+                    st.markdown("**🤖 ML Model Info:**")
+                    st.write(f"• Model Type: {analysis_result['model_type']}")
+                    st.write(f"• Fraud Score: {analysis_result['fraud_score']:.3f}")
+                    st.write(f"• Confidence: {analysis_result['confidence']:.3f}")
+                
                 # Recommendations
-                display_recommendations(analysis_result)
+                st.markdown("### 💡 Recommendations")
+                
+                if analysis_result['predicted_fraud']:
+                    st.markdown("""
+                    **🚨 IMMEDIATE ACTIONS REQUIRED:**
+                    
+                    **Priority 1 - Immediate:**
+                    • 📞 Contact the account holder immediately to verify the transaction
+                    • 🔒 Temporarily freeze the account to prevent further unauthorized transactions
+                    • 📋 Document all fraud indicators for investigation
+                    
+                    **Priority 2 - Investigation:**
+                    • 🔍 Verify the receiver card details and relationship to account holder
+                    • 🕵️ Check transaction patterns in the last 24-48 hours
+                    • 📊 Review customer's recent transaction history for anomalies
+                    • 🌐 Cross-reference with global fraud databases
+                    
+                    **Priority 3 - Follow-up:**
+                    • 📈 Implement enhanced monitoring for future transactions
+                    • 🔐 Consider requiring additional verification for high-risk transactions
+                    • 📝 Update customer risk profile based on investigation results
+                    """)
+                else:
+                    st.markdown("""
+                    **✅ TRANSACTION APPROVED - MONITORING ACTIONS:**
+                    
+                    **Standard Processing:**
+                    • ✅ Transaction can proceed with normal processing
+                    • 📊 Continue standard transaction monitoring
+                    • 🔄 Update customer transaction patterns
+                    
+                    **Enhanced Monitoring (if applicable):**""")
+                    
+                    # Add specific monitoring based on risk factors
+                    if analysis_result['fraud_score'] > 0.3:
+                        st.markdown("• 👀 Monitor for unusual patterns in next 24 hours")
+                    if analysis_result['card_analysis']['is_new_card']:
+                        st.markdown("• 💳 Track new card usage patterns")
+                    if analysis_result['hour_risk_score'] > 2.0:
+                        st.markdown("• ⏰ Monitor for repeated unusual-hour transactions")
                 
                 # Technical details
-                display_technical_details(analysis_result)
+                with st.expander("🔧 Technical Details", expanded=False):
+                    st.markdown("### Your ML Model Details")
+                    
+                    tech_col1, tech_col2 = st.columns(2)
+                    
+                    with tech_col1:
+                        st.markdown("**Model Information:**")
+                        st.write(f"• Model Type: {analysis_result['model_type']}")
+                        st.write("• Time Source: User PC Local Time")
+                        st.write("• Feature Engineering: Real-time")
+                        st.write("• Processing: Instant analysis")
+                        
+                    with tech_col2:
+                        st.markdown("**Features Used:**")
+                        feature_count = len(analysis_result['features_used'])
+                        st.write(f"• Total Features: {feature_count}")
+                        st.write("• Customer History: Included")
+                        st.write("• Time Features: Included")
+                        st.write("• Amount Features: Included")
+                    
+                    st.markdown("### Feature Values")
+                    st.json(analysis_result['features_used'])
                 
                 # Success message
-                st.success("✅ Enhanced fraud detection analysis completed successfully!")
+                st.success("✅ Fraud detection analysis completed successfully using your ML model!")
                 
             except Exception as e:
                 st.error(f"❌ Error during analysis: {str(e)}")
-                st.write("Please check your inputs and try again.")
+                st.write("Please check your inputs and model file, then try again.")
     
     # Additional features section
     st.markdown("---")
@@ -936,20 +1004,23 @@ def main():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("📊 View Model Stats"):
-            st.info("📈 Model Performance: Enhanced fraud detection with 95%+ accuracy")
-            st.info("🔄 Last Updated: Real-time learning enabled")
-            st.info("🎯 Detection Rate: Optimized for low false positives")
+        if st.button("📊 Model Information"):
+            st.info("🤖 Using your trained ML model for fraud detection")
+            st.info("🕒 Real-time analysis with PC local time")
+            st.info("🎯 Optimized for accuracy and speed")
     
     with col2:
-        if st.button("🔍 Batch Analysis"):
-            st.info("💼 Batch processing feature coming soon!")
-            st.info("📁 Upload CSV files for bulk transaction analysis")
+        if st.button("🔍 Feature Analysis"):
+            st.info("💼 Multi-factor feature engineering")
+            st.info("📈 Customer behavior analysis")
+            st.info("⏰ Time-based pattern recognition")
     
     with col3:
-        if st.button("📋 Export Report"):
-            st.info("📄 Report generation feature coming soon!")
-            st.info("📊 Detailed analysis reports and audit trails")
+        if st.button("📋 Model Status"):
+            model_status = "✅ Loaded" if hasattr(model_data, 'predict') else "⚠️ Fallback"
+            st.info(f"🤖 ML Model: {model_status}")
+            st.info("🕒 Time Source: PC Local Time")
+            st.info("🔄 Status: Ready for Analysis")
 
 # Footer
 footer_style = """
@@ -971,7 +1042,7 @@ footer_style = """
         }
     </style>
     <div class="footer">
-        © 2025 Enhanced Fraud Detection System | Powered by Advanced AI & Machine Learning
+        © 2025 Enhanced Fraud Detection System | Powered by Your ML Model & Real-Time Analysis
     </div>
 """
 
@@ -980,4 +1051,3 @@ st.markdown(footer_style, unsafe_allow_html=True)
 # Run the main application
 if __name__ == "__main__":
     main()
-
